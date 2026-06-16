@@ -760,7 +760,8 @@ BUILD_IMG() {
         local OUT_IMG="$OUT_DIR/${PARTITION}.img"
         local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
         local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
-        local SIZE=$(du -sb --apparent-size "$SRC_DIR" | awk '{printf "%.0f", $1 * 1.2}')
+        local TREE_SIZE=$(du -sb --apparent-size "$SRC_DIR" | awk '{print $1}')
+        local SIZE=$(awk -v ts="$TREE_SIZE" 'BEGIN { s = int(ts * 1003 / 1000); if (s < 262144) s = 262144; printf "%.0f", s }')
         MOUNT_POINT="/$PARTITION"
         [[ -f "$FS_CONFIG" ]] || { echo -e "Warning: $FS_CONFIG missing, skipping $PARTITION"; continue; }
         [[ -f "$FILE_CONTEXTS" ]] || { echo -e "Warning: $FILE_CONTEXTS missing, skipping $PARTITION"; continue; }
@@ -768,11 +769,11 @@ BUILD_IMG() {
         sort -u "$FS_CONFIG" -o "$FS_CONFIG"
         if [[ "$FILE_SYSTEM" == "erofs" ]]; then
             echo -e "${YELLOW}Building EROFS image:${NC} $OUT_IMG"
-            $(pwd)/bin/erofs-utils/mkfs.erofs --mount-point="$MOUNT_POINT" --fs-config-file="$FS_CONFIG" --file-contexts="$FILE_CONTEXTS" -z lz4hc -b 4096 -T 1199145600 "$OUT_IMG" "$SRC_DIR" &>/dev/null
+            $(pwd)/bin/erofs-utils/mkfs.erofs --mount-point="$MOUNT_POINT" --fs-config-file="$FS_CONFIG" --file-contexts="$FILE_CONTEXTS" -z lz4hc,9 -b 4096 -T 1640995200 "$OUT_IMG" "$SRC_DIR" &>/dev/null
             echo -e "  ✅ $(basename "$OUT_IMG") done"
         elif [[ "$FILE_SYSTEM" == "ext4" ]]; then
             echo -e "${YELLOW}Building ext4 image:${NC} $OUT_IMG"
-            $(pwd)/bin/ext4/make_ext4fs -l "$(awk "BEGIN {printf \"%.0f\", $SIZE * 1.1}")" -J -b 4096 -S "$FILE_CONTEXTS" -C "$FS_CONFIG" -a "$MOUNT_POINT" -L "$PARTITION" "$OUT_IMG" "$SRC_DIR" &>/dev/null
+            $(pwd)/bin/ext4/make_ext4fs -l "$SIZE" -J -b 4096 -S "$FILE_CONTEXTS" -C "$FS_CONFIG" -a "$MOUNT_POINT" -L "$PARTITION" "$OUT_IMG" "$SRC_DIR" &>/dev/null
             resize2fs -M "$OUT_IMG" &>/dev/null
             echo -e "  ✅ $(basename "$OUT_IMG") done"
         else
