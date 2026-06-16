@@ -916,11 +916,17 @@ BUILD_IMG() {
         sort -u "$FS_CONFIG" -o "$FS_CONFIG"
         if [[ "$FILE_SYSTEM" == "erofs" ]]; then
             echo -e "${YELLOW}Building EROFS image:${NC} $OUT_IMG"
-            $(pwd)/bin/erofs-utils/mkfs.erofs --mount-point="$MOUNT_POINT" --fs-config-file="$FS_CONFIG" --file-contexts="$FILE_CONTEXTS" -z lz4hc,9 -b 4096 -T 1640995200 "$OUT_IMG" "$SRC_DIR" &>/dev/null
+            if ! $(pwd)/bin/erofs-utils/mkfs.erofs --mount-point="$MOUNT_POINT" --fs-config-file="$FS_CONFIG" --file-contexts="$FILE_CONTEXTS" -z lz4hc,9 -b 4096 -T 1640995200 "$OUT_IMG" "$SRC_DIR" 2>&1; then
+                echo -e "${RED}❌ Failed to build $PARTITION.img${NC}"
+                exit 1
+            fi
             echo -e "  ✅ $(basename "$OUT_IMG") done"
         elif [[ "$FILE_SYSTEM" == "ext4" ]]; then
             echo -e "${YELLOW}Building ext4 image:${NC} $OUT_IMG"
-            $(pwd)/bin/ext4/make_ext4fs -l "$SIZE" -J -b 4096 -S "$FILE_CONTEXTS" -C "$FS_CONFIG" -a "$MOUNT_POINT" -L "$PARTITION" "$OUT_IMG" "$SRC_DIR" &>/dev/null
+            if ! $(pwd)/bin/ext4/make_ext4fs -l "$SIZE" -J -b 4096 -S "$FILE_CONTEXTS" -C "$FS_CONFIG" -a "$MOUNT_POINT" -L "$PARTITION" "$OUT_IMG" "$SRC_DIR" 2>&1; then
+                echo -e "${RED}❌ Failed to build $PARTITION.img${NC}"
+                exit 1
+            fi
             resize2fs -M "$OUT_IMG" &>/dev/null
             echo -e "  ✅ $(basename "$OUT_IMG") done"
         else
