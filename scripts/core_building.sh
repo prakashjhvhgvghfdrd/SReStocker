@@ -594,6 +594,62 @@ UPDATE_FLOATING_FEATURE() {
     fi
 }
 
+APPEND_METADATA_FOR_PATH() {
+    local EXTRACTED_FIRM_DIR="$1"
+    local ADDED_PATH="$2"
+
+    [ ! -e "$ADDED_PATH" ] && return 0
+
+    local PARTITION
+    if [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/system"* ]]; then
+        PARTITION="system"
+    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/product"* ]]; then
+        PARTITION="product"
+    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/system_ext"* ]]; then
+        PARTITION="system_ext"
+    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/vendor"* ]]; then
+        PARTITION="vendor"
+    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/odm"* ]]; then
+        PARTITION="odm"
+    else
+        return 0
+    fi
+
+    local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
+    local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
+
+    echo -e "  📋 Appending metadata for new files in $(basename "$ADDED_PATH")"
+
+    find "$ADDED_PATH" \( -type f -o -type d -o -type l \) 2>/dev/null | while IFS= read -r item; do
+        local REL_PATH="${item#$EXTRACTED_FIRM_DIR/}"
+        [[ "$PARTITION" == "system" ]] && REL_PATH="${REL_PATH#system/}"
+
+        local ENTRY
+        if [[ "$PARTITION" == "system" ]]; then
+            ENTRY="$REL_PATH"
+        else
+            ENTRY="$PARTITION/$REL_PATH"
+        fi
+
+        if ! grep -qF "$ENTRY " "$FS_CONFIG" 2>/dev/null; then
+            if [ -d "$item" ]; then
+                echo "$ENTRY 0 0 755 capabilities=0x0" >> "$FS_CONFIG"
+            else
+                echo "$ENTRY 0 0 0644 capabilities=0x0" >> "$FS_CONFIG"
+            fi
+        fi
+
+        if ! grep -qF "/$ENTRY " "$FILE_CONTEXTS" 2>/dev/null; then
+            echo "/$ENTRY u:object_r:system_file:s0" >> "$FILE_CONTEXTS"
+        fi
+    done
+
+    sort -u "$FS_CONFIG" -o "$FS_CONFIG" 2>/dev/null
+    sort -u "$FILE_CONTEXTS" -o "$FILE_CONTEXTS" 2>/dev/null
+
+    echo -e "  ✅ Metadata appended for $PARTITION"
+}
+
 APPLY_STOCK_CONFIG() {
     echo -e ""
     if [ -z "$STOCK_DEVICE" ] || [ "$STOCK_DEVICE" = "None" ]; then
@@ -634,6 +690,9 @@ APPLY_STOCK_CONFIG() {
     if [ -d "$DEVICES_DIR/$STOCK_DEVICE/extra" ]; then
         cp -af "$DEVICES_DIR/$STOCK_DEVICE/extra/." "$(pwd)/OUT"
     fi
+
+    APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$EXTRACTED_FIRM_DIR/system/system"
+    APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$EXTRACTED_FIRM_DIR/product/overlay"
 }
 
 BUILD_PROP() {
