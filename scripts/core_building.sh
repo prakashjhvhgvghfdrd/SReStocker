@@ -267,6 +267,76 @@ PREPARE_PARTITIONS() {
     shopt -u nullglob dotglob
 }
 
+SAVE_ORIGINAL_METADATA() {
+    local IMG="$1"
+    local FIRM_DIR="$2"
+    local PARTITION="$3"
+    local FS_CONFIG="$FIRM_DIR/config/${PARTITION}_fs_config"
+    local FILE_CONTEXTS="$FIRM_DIR/config/${PARTITION}_file_contexts"
+    local MOUNT_POINT="$FIRM_DIR/.mount_${PARTITION}"
+
+    mkdir -p "$FIRM_DIR/config" "$MOUNT_POINT"
+
+    local fstype
+    fstype=$(DETECT_FILESYSTEM "$IMG")
+
+    if [[ "$fstype" == "erofs" ]]; then
+        fuse.erofs "$IMG" "$MOUNT_POINT" 2>/dev/null || {
+            echo -e "  ⚠️ Cannot mount EROFS image for metadata, falling back to generated metadata"
+            return 1
+        }
+    elif [[ "$fstype" == "ext4" ]]; then
+        mount -o ro "$IMG" "$MOUNT_POINT" 2>/dev/null || {
+            echo -e "  ⚠️ Cannot mount ext4 image for metadata, falling back to generated metadata"
+            return 1
+        }
+    else
+        echo -e "  ⚠️ Unknown filesystem for metadata, falling back to generated metadata"
+        return 1
+    fi
+
+    echo -e "  📋 Capturing real metadata from $PARTITION.img"
+
+    find "$MOUNT_POINT" -exec stat -c "%n %u %g %a capabilities=0x0" {} \; 2>/dev/null | \
+        sed "s|$MOUNT_POINT|${PARTITION}|g" | \
+        sed "s|^${PARTITION}$|${PARTITION}/ 0 0 755 capabilities=0x0|" | \
+        sort > "$FS_CONFIG"
+
+    local TEMP_CONTEXTS="$FIRM_DIR/config/.temp_file_contexts_${PARTITION}"
+    > "$TEMP_CONTEXTS"
+    find "$MOUNT_POINT" -print0 2>/dev/null | while IFS= read -r -d '' item; do
+        local rel_path="${item#$MOUNT_POINT}"
+        [[ -z "$rel_path" ]] && rel_path="/"
+        local ctx
+        ctx=$(getfattr -n security.selinux --only-values -h "$item" 2>/dev/null)
+        if [[ -n "$ctx" ]]; then
+            echo "/${PARTITION}${rel_path} ${ctx}" >> "$TEMP_CONTEXTS"
+        else
+            echo "/${PARTITION}${rel_path} u:object_r:system_file:s0" >> "$TEMP_CONTEXTS"
+        fi
+    done
+    sed "s|//|/|g" "$TEMP_CONTEXTS" | sort > "$FILE_CONTEXTS"
+    rm -f "$TEMP_CONTEXTS"
+
+    if [[ "$PARTITION" == "system" ]]; then
+        sed -i "s|^system/|/|g" "$FS_CONFIG"
+        sed -i "s|^system |/ |g" "$FS_CONFIG"
+        sed -i "s|^/system |/ |g" "$FILE_CONTEXTS"
+        sed -i "s|^/system/|/|g" "$FILE_CONTEXTS"
+        echo "/ u:object_r:system_file:s0" >> "$FILE_CONTEXTS"
+        echo "/ 0 0 755 capabilities=0x0" >> "$FS_CONFIG"
+    fi
+
+    sort -u "$FS_CONFIG" -o "$FS_CONFIG"
+    sort -u "$FILE_CONTEXTS" -o "$FILE_CONTEXTS"
+
+    umount "$MOUNT_POINT" 2>/dev/null
+    rm -rf "$MOUNT_POINT"
+
+    echo -e "  ✅ Real metadata saved for $PARTITION"
+    return 0
+}
+
 EXTRACT_FIRMWARE_IMG() {
     echo -e ""
     if [ "$#" -ne 1 ]; then
@@ -318,18 +388,21 @@ EOF
             ext4)
                 IMG_SIZE=$(stat -c%s -- "$imgfile")
                 echo -e "  ✓ $partition.img ext4 ($(numfmt --to=iec $IMG_SIZE))"
+                SAVE_ORIGINAL_METADATA "$imgfile" "$FIRM_DIR" "$partition"
                 rm -rf "$FIRM_DIR/$partition"
                 python3 "$(pwd)/bin/py_scripts/imgextractor.py" "$imgfile" "$FIRM_DIR" &>/dev/null
                 ;;
             erofs)
                 IMG_SIZE=$(stat -c%s -- "$imgfile")
                 echo -e "  ✓ $partition.img erofs ($(numfmt --to=iec $IMG_SIZE))"
+                SAVE_ORIGINAL_METADATA "$imgfile" "$FIRM_DIR" "$partition"
                 rm -rf "$FIRM_DIR/$partition"
                 "$(pwd)/bin/erofs-utils/extract.erofs" -i "$imgfile" -x -f -o "$FIRM_DIR" &>/dev/null
                 ;;
             f2fs)
                 IMG_SIZE=$(stat -c%s -- "$imgfile")
                 echo -e "  ✓ $partition.img f2fs ($(numfmt --to=iec $IMG_SIZE))"
+                SAVE_ORIGINAL_METADATA "$imgfile" "$FIRM_DIR" "$partition"
                 bash "$(pwd)/scripts/convert_to_ext4.sh" "$imgfile" &>/dev/null
                 rm -rf "$FIRM_DIR/$partition"
                 python3 "$(pwd)/bin/py_scripts/imgextractor.py" "$imgfile" "$FIRM_DIR" &>/dev/null
@@ -654,9 +727,13 @@ GEN_FS_CONFIG() {
         PARTITION="$(basename "$ROOT")"
         [ "$PARTITION" = "config" ] && continue
         local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
+        if [ -s "$FS_CONFIG" ]; then
+            echo -e "  ✅ $PARTITION fs_config already exists (real metadata), skipping generation"
+            continue
+        fi
         local TMP_EXISTING="$(mktemp)"
         touch "$FS_CONFIG"
-        echo -e "${YELLOW}Generating fs_config:${NC} $PARTITION"
+        echo -e "${YELLOW}Generating fs_config:${NC} $PARTITION (fallback - no real metadata found)"
         awk '{print $1}' "$FS_CONFIG" | sort -u > "$TMP_EXISTING"
         find "$ROOT" -mindepth 1 \( -type f -o -type d -o -type l \) | while IFS= read -r item; do
             REL_PATH="${item#$ROOT/}"
@@ -673,7 +750,7 @@ GEN_FS_CONFIG() {
             fi
         done
         rm -f "$TMP_EXISTING"
-        echo -e "  ✅ $PARTITION fs_config generated"
+        echo -e "  ✅ $PARTITION fs_config generated (fallback)"
     done
 }
 
@@ -706,8 +783,12 @@ GEN_FILE_CONTEXTS() {
         PARTITION="$(basename "$ROOT")"
         [ "$PARTITION" = "config" ] && continue
         local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
+        if [ -s "$FILE_CONTEXTS" ]; then
+            echo -e "  ✅ $PARTITION file_contexts already exists (real metadata), skipping generation"
+            continue
+        fi
         touch "$FILE_CONTEXTS"
-        echo -e "${YELLOW}Generating file_contexts:${NC} $PARTITION"
+        echo -e "${YELLOW}Generating file_contexts:${NC} $PARTITION (fallback - no real metadata found)"
         declare -A EXISTING=()
         while IFS= read -r line || [[ -n "$line" ]]; do
             [ -z "$line" ] && continue
@@ -737,7 +818,7 @@ GEN_FILE_CONTEXTS() {
                 EXISTING["$ESCAPED_PATH"]=1
             fi
         done < <(find "$ROOT" -mindepth 1 \( -type f -o -type d -o -type l \))
-        echo -e "  ✅ $PARTITION file_contexts generated"
+        echo -e "  ✅ $PARTITION file_contexts generated (fallback)"
         unset EXISTING
     done
 }
