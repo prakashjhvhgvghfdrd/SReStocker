@@ -281,6 +281,10 @@ SAVE_ORIGINAL_METADATA() {
     fstype=$(DETECT_FILESYSTEM "$IMG")
 
     if [[ "$fstype" == "erofs" ]]; then
+        [ -c /dev/fuse ] || {
+            echo -e "  ⚠️ /dev/fuse not available, falling back to generated metadata"
+            return 1
+        }
         fuse.erofs "$IMG" "$MOUNT_POINT" 2>/dev/null || {
             echo -e "  ⚠️ Cannot mount EROFS image for metadata, falling back to generated metadata"
             return 1
