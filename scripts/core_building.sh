@@ -423,54 +423,6 @@ EOF
     echo -e "✅ Images extracted"
 }
 
-INSTALL_FRAMEWORK() {
-    if [ "$#" -ne 1 ]; then
-        echo -e "Usage: ${FUNCNAME[0]} <framework-res.apk>"
-        return 1
-    fi
-    echo -e ""
-    local framework_apk="$1"
-    echo -e "${YELLOW}Installing $framework_apk${NC}"
-    java -jar "$APKTOOL" install-framework "$framework_apk"
-}
-
-DECOMPILE() {
-    echo -e ""
-    if [ "$#" -ne 4 ]; then
-        echo -e "Usage: DECOMPILE <APKTOOL_JAR_DIR> <FRAMEWORK_DIR> <FILE> <DECOMPILE_DIR>"
-        return 1
-    fi
-    local APKTOOL="$1"
-    local FRAMEWORK_DIR="$2"
-    local FILE="$3"
-    local DECOMPILE_DIR="$4"
-    local BASENAME="$(basename "${FILE%.*}")"
-    local OUT="$DECOMPILE_DIR/$BASENAME"
-    echo -e "${YELLOW}Decompiling:${NC} $FILE"
-    rm -rf "$OUT"
-    java -jar "$APKTOOL" d --force --frame-path "$FRAMEWORK_DIR" --match-original "$FILE" -o "$OUT"
-}
-
-RECOMPILE() {
-    echo -e ""
-    if [ "$#" -ne 4 ]; then
-        echo -e "Usage: ${FUNCNAME[0]} <APKTOOL_JAR_DIR> <FRAMEWORK_DIR> <DECOMPILED_DIR> <RECOMPILE_DIR>"
-        return 1
-    fi
-    local APKTOOL="$1"
-    local FRAMEWORK_DIR="$2"
-    local DECOMPILED_DIR="$3"
-    local RECOMPILE_DIR="$4"
-    local org_file_name
-    org_file_name=$(awk '/^apkFileName:/ {print $2}' "$DECOMPILED_DIR/apktool.yml")
-    local name="${org_file_name%.*}"
-    local ext="${org_file_name##*.}"
-    local built_file="$WORK_DIR/${name}.$ext"
-    echo -e "${YELLOW}Recompiling:${NC} $DECOMPILED_DIR"
-    java -jar "$APKTOOL" b "$DECOMPILED_DIR" --copy-original --frame-path "$FRAMEWORK_DIR" -o "$built_file"
-    rm -rf "$DECOMPILED_DIR"
-}
-
 ADD_SYSTEM_EXT_IN_SYSTEM_ROOT() {
     if [ "$#" -ne 1 ]; then
         echo -e "Usage: ${FUNCNAME[0]} <EXTRACTED_FIRM_DIR>"
