@@ -19,7 +19,6 @@ export OUT_DIR="$(pwd)/OUT"
 export WORK_DIR="$(pwd)/WORK"
 export FIRM_DIR="$(pwd)/FIRMWARE"
 export DEVICES_DIR="$(pwd)/SReStocker/Devices"
-export APKTOOL="$(pwd)/bin/apktool/apktool.jar"
 export VNDKS_COLLECTION="$(pwd)/SReStocker/vndks"
 
 export BUILD_PARTITIONS="product,system_ext,system"
