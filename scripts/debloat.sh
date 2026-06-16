@@ -6,6 +6,39 @@
 : "${YELLOW:=\e[33m}"
 : "${NC:=\e[0m}"
 
+REMOVE_FROM_METADATA() {
+    local EXTRACTED_FIRM_DIR="$1"
+    local DELETED_PATH="$2"
+
+    local REL_PATH="${DELETED_PATH#$EXTRACTED_FIRM_DIR/}"
+
+    local PARTITION
+    if [[ "$REL_PATH" == system/* ]]; then
+        PARTITION="system"
+        REL_PATH="${REL_PATH#system/}"
+    elif [[ "$REL_PATH" == product/* ]]; then
+        PARTITION="product"
+        REL_PATH="${REL_PATH#product/}"
+    elif [[ "$REL_PATH" == system_ext/* ]]; then
+        PARTITION="system_ext"
+        REL_PATH="${REL_PATH#system_ext/}"
+    elif [[ "$REL_PATH" == vendor/* ]]; then
+        PARTITION="vendor"
+        REL_PATH="${REL_PATH#vendor/}"
+    elif [[ "$REL_PATH" == odm/* ]]; then
+        PARTITION="odm"
+        REL_PATH="${REL_PATH#odm/}"
+    else
+        return 0
+    fi
+
+    local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
+    local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
+
+    [ -f "$FS_CONFIG" ] && sed -i "\|^${REL_PATH} |d" "$FS_CONFIG" 2>/dev/null
+    [ -f "$FILE_CONTEXTS" ] && sed -i "\|^/${REL_PATH} |d" "$FILE_CONTEXTS" 2>/dev/null
+}
+
 DEBLOAT_APPS=(
     "HMT" "PaymentFramework" "SamsungCalendar" "LiveTranscribe" "DigitalWellbeing"
     "Maps" "Duo" "Photos" "FactoryCameraFB" "WlanTest" "AssistantShell" "BardShell"
@@ -63,8 +96,10 @@ IS_PROTECTED_APP() {
 
 REMOVE_PATH_IF_EXISTS() {
     local path="$1"
+    local root="$2"
     if [[ -e "$path" ]]; then
         rm -rf "$path" || echo "[WARN] Failed to remove: $path"
+        [ -n "$root" ] && REMOVE_FROM_METADATA "$root" "$path"
     fi
 }
 
@@ -91,7 +126,7 @@ REMOVE_APP_DIRS() {
     for dir in "${APP_DIRS[@]}"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r -d '' candidate; do
-            REMOVE_PATH_IF_EXISTS "$candidate"
+            REMOVE_PATH_IF_EXISTS "$candidate" "$root"
             removed=1
         done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -iname "*${app_token}*" -print0 2>/dev/null)
     done
@@ -127,12 +162,12 @@ REMOVE_APP_RESIDUALS() {
     for cfg in "${CONFIG_DIRS[@]}"; do
         [[ -d "$cfg" ]] || continue
         while IFS= read -r -d '' f; do
-            REMOVE_PATH_IF_EXISTS "$f"
+            REMOVE_PATH_IF_EXISTS "$f" "$root"
         done < <(find "$cfg" -type f -iname "*${app_token}*.xml" -print0 2>/dev/null)
     done
 
     while IFS= read -r -d '' oat_dir; do
-        REMOVE_PATH_IF_EXISTS "$oat_dir"
+        REMOVE_PATH_IF_EXISTS "$oat_dir" "$root"
     done < <(find "$root" -type d -iname "*${app_token}*" -path "*/oat/*" -print0 2>/dev/null)
 }
 
@@ -175,18 +210,19 @@ REMOVE_ESIM_FILES() {
 
     local EXTRACTED_FIRM_DIR="$1"
     echo -e "- Removing ESIM files."
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/autoinstalls/autoinstalls-com.google.android.euicc"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/default-permissions/default-permissions-com.google.android.euicc.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/permissions/privapp-permissions-com.samsung.euicc.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/permissions/privapp-permissions-com.samsung.android.app.esimkeystring.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/permissions/privapp-permissions-com.samsung.android.app.telephonyui.esimclient.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/privapp-permissions-com.samsung.android.app.telephonyui.esimclient.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/sysconfig/preinstalled-packages-com.samsung.euicc.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/sysconfig/preinstalled-packages-com.samsung.android.app.esimkeystring.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/EsimClient"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/EsimKeyString"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/EuiccService"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/EuiccGoogle"
+    local d="$EXTRACTED_FIRM_DIR"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/autoinstalls/autoinstalls-com.google.android.euicc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/default-permissions/default-permissions-com.google.android.euicc.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/permissions/privapp-permissions-com.samsung.euicc.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/permissions/privapp-permissions-com.samsung.android.app.esimkeystring.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/permissions/privapp-permissions-com.samsung.android.app.telephonyui.esimclient.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/privapp-permissions-com.samsung.android.app.telephonyui.esimclient.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/sysconfig/preinstalled-packages-com.samsung.euicc.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/sysconfig/preinstalled-packages-com.samsung.android.app.esimkeystring.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/EsimClient" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/EsimKeyString" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/EuiccService" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/EuiccGoogle" "$d"
 }
 
 REMOVE_FABRIC_CRYPTO() {
@@ -195,20 +231,20 @@ REMOVE_FABRIC_CRYPTO() {
         return 1
     fi
 
-    local EXTRACTED_FIRM_DIR="$1"
+    local d="$1"
     echo -e "- Removing fabric crypto."
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/bin/fabric_crypto"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/init/fabric_crypto.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/permissions/FabricCryptoLib.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/vintf/manifest/fabric_crypto_manifest.xml"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/framework/FabricCryptoLib.jar"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/framework/oat/arm/FabricCryptoLib.odex"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/framework/oat/arm/FabricCryptoLib.vdex"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/framework/oat/arm64/FabricCryptoLib.odex"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/framework/oat/arm64/FabricCryptoLib.vdex"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/lib64/com.samsung.security.fabric.cryptod-V1-cpp.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/lib64/vendor.samsung.hardware.security.fkeymaster-V1-ndk.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/KmxService"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/bin/fabric_crypto" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/init/fabric_crypto.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/permissions/FabricCryptoLib.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/vintf/manifest/fabric_crypto_manifest.xml" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/framework/FabricCryptoLib.jar" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/framework/oat/arm/FabricCryptoLib.odex" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/framework/oat/arm/FabricCryptoLib.vdex" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/framework/oat/arm64/FabricCryptoLib.odex" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/framework/oat/arm64/FabricCryptoLib.vdex" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/lib64/com.samsung.security.fabric.cryptod-V1-cpp.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/lib64/vendor.samsung.hardware.security.fkeymaster-V1-ndk.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/KmxService" "$d"
 }
 
 REMOVE_DEBLOAT_LIBS() {
@@ -217,84 +253,74 @@ REMOVE_DEBLOAT_LIBS() {
         return 1
     fi
 
-    local EXTRACTED_FIRM_DIR="$1"
+    local d="$1"
     echo -e "- Removing debloated app libraries."
 
-    # Payment / Samsung Pay
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/hidl_tlc_payment_comm_client.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libtlc_payment_comm.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libtlc_payment_direct_comm.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libtlc_payment_spay.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/vendor.samsung.hardware.tlc.payment@1.0.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/hidl_tlc_payment_comm_client.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libtlc_payment_comm.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libtlc_payment_direct_comm.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libtlc_payment_spay.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/vendor.samsung.hardware.tlc.payment@1.0.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/vendor.samsung.hardware.tlc.payment@1.0-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/vendor.samsung.hardware.tlc.payment@1.0.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/vendor.samsung.hardware.tlc.payment@1.0-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/vendor.samsung.hardware.tlc.payment@1.0.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/hidl_tlc_payment_comm_client.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libtlc_payment_comm.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libtlc_payment_direct_comm.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libtlc_payment_spay.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/vendor.samsung.hardware.tlc.payment@1.0.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/hidl_tlc_payment_comm_client.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libtlc_payment_comm.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libtlc_payment_direct_comm.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libtlc_payment_spay.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/vendor.samsung.hardware.tlc.payment@1.0.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/vendor.samsung.hardware.tlc.payment@1.0-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/vendor.samsung.hardware.tlc.payment@1.0.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/vendor.samsung.hardware.tlc.payment@1.0-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/vendor.samsung.hardware.tlc.payment@1.0.so" "$d"
 
-    # Bixby Voice
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSamsungAPVoiceEngine.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libVoiceCommandEngine.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libtensorflowlite_jni_voicecommand.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSamsungAPVoiceEngine.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libVoiceCommandEngine.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libtensorflowlite_jni_voicecommand.so" "$d"
 
-    # Voice Changer
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libvoicechanger.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libvoicechanger.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libvoicechanger.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libvoicechanger.so" "$d"
 
-    # Voice Recognition
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/lib/libvoicerecognition.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/lib/libvoicerecognition_jni.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/lib64/libvoicerecognition.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/lib64/libvoicerecognition_jni.so"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/lib/libvoicerecognition.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/lib/libvoicerecognition_jni.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/lib64/libvoicerecognition.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/lib64/libvoicerecognition_jni.so" "$d"
 
-    # GpuWatchApp
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libgfxgrab.gpuwatchapp.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libgpustat.gpuwatchapp.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libsysinfo.gpuwatchapp.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libgfxgrab.gpuwatchapp.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libgpustat.gpuwatchapp.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libsysinfo.gpuwatchapp.samsung.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libgfxgrab.gpuwatchapp.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libgpustat.gpuwatchapp.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libsysinfo.gpuwatchapp.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libgfxgrab.gpuwatchapp.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libgpustat.gpuwatchapp.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libsysinfo.gpuwatchapp.samsung.so" "$d"
 
-    # Audio Mirroring
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libaudiomirroring_jni.audiomirroring.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libaudiomirroring_jni.audiomirroring.samsung.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libaudiomirroring_jni.audiomirroring.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libaudiomirroring_jni.audiomirroring.samsung.so" "$d"
 
-    # SPen OCR/SDK (A34 has no S Pen)
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libSDKMoireDetector.spenocr.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libSDKRecognitionOCR.spenocr.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libSDKRecognitionText.spensdk.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libSDKonnxruntime.spenocr.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSDKMoireDetector.spenocr.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSDKRecognitionOCR.spenocr.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSDKRecognitionText.spensdk.samsung.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSDKonnxruntime.spenocr.samsung.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libSDKMoireDetector.spenocr.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libSDKRecognitionOCR.spenocr.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libSDKRecognitionText.spensdk.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libSDKonnxruntime.spenocr.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSDKMoireDetector.spenocr.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSDKRecognitionOCR.spenocr.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSDKRecognitionText.spensdk.samsung.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSDKonnxruntime.spenocr.samsung.so" "$d"
 
-    # Quram codec (from debloated apps, NOT camera)
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libBarcodeReader.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libSEF.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libagifencoder.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib/libimagecodec.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libBarcodeReader.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libSEF.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libagifencoder.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libimagecodec.quram.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/lib64/libsecjpegquram.so"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libBarcodeReader.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libSEF.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libagifencoder.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib/libimagecodec.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libBarcodeReader.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libSEF.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libagifencoder.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libimagecodec.quram.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/lib64/libsecjpegquram.so" "$d"
 
-    # SoundTrigger (unused on A34)
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/hw/android.hardware.soundtrigger3-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/hw/android.hardware.soundtrigger@2.3-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/hw/sound_trigger.primary.default.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/hw/android.hardware.soundtrigger3-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/hw/android.hardware.soundtrigger@2.3-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/hw/sound_trigger.primary.default.so"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/hw/android.hardware.soundtrigger3-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/hw/android.hardware.soundtrigger@2.3-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/hw/sound_trigger.primary.default.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/hw/android.hardware.soundtrigger3-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/hw/android.hardware.soundtrigger@2.3-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/hw/sound_trigger.primary.default.so" "$d"
 
-    # Renderscript (deprecated)
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib64/hw/android.hardware.renderscript@1.0-impl.so"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/lib/hw/android.hardware.renderscript@1.0-impl.so"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib64/hw/android.hardware.renderscript@1.0-impl.so" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/lib/hw/android.hardware.renderscript@1.0-impl.so" "$d"
 }
 
 REMOVE_UNUSED_SERVICES() {
@@ -303,40 +329,36 @@ REMOVE_UNUSED_SERVICES() {
         return 1
     fi
 
-    local EXTRACTED_FIRM_DIR="$1"
+    local d="$1"
     echo -e "- Removing unused init services."
 
-    # Debug/Logging services (eat RAM, slow boot)
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/mtklog.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/md_monitor.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/bootperf.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/boringssl_self_test.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/loghidlvendorservice.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/atrace_categories.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor_flash_recovery.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/eara-io-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/networksetting.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/etc/init/loghidlsysservice.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/system_ext/etc/init/netdiag.rc"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/mtklog.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/md_monitor.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/bootperf.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/boringssl_self_test.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/loghidlvendorservice.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/atrace_categories.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor_flash_recovery.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/eara-io-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/networksetting.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/etc/init/loghidlsysservice.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system_ext/etc/init/netdiag.rc" "$d"
 
-    # Unknown/debug services
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/gbe.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/chipinfo_init.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/emservice.rc"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/gbe.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/chipinfo_init.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/emservice.rc" "$d"
 
-    # Payment/Knox services (apps/libs already debloated)
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.tlc.payment@1.0-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.tlc.iccc-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.tlc.kg-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.tlc.mpos_tui@1.0-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.security.skpm-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.security.engmode@1.0-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.security.drk@2.0-service.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/vendor.samsung.hardware.security.hdcp.wifidisplay-default.rc"
-    rm -rf "$EXTRACTED_FIRM_DIR/vendor/etc/init/wsm-service.rc"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.tlc.payment@1.0-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.tlc.iccc-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.tlc.kg-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.tlc.mpos_tui@1.0-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.security.skpm-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.security.engmode@1.0-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.security.drk@2.0-service.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/vendor.samsung.hardware.security.hdcp.wifidisplay-default.rc" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/vendor/etc/init/wsm-service.rc" "$d"
 
-    # Audio mirroring (app already debloated)
-    rm -rf "$EXTRACTED_FIRM_DIR/system/etc/init/audiomirroring.rc"
+    REMOVE_PATH_IF_EXISTS "$d/system/etc/init/audiomirroring.rc" "$d"
 }
 
 DEBLOAT() {
@@ -346,29 +368,39 @@ DEBLOAT() {
     fi
 
     local EXTRACTED_FIRM_DIR="$1"
+    local d="$EXTRACTED_FIRM_DIR"
     echo -e "${YELLOW}Debloating apps and files (deep safe mode).${NC}"
 
-    DEBLOAT_APPS_AND_RESIDUALS "$EXTRACTED_FIRM_DIR"
-    REMOVE_ESIM_FILES "$EXTRACTED_FIRM_DIR"
-    REMOVE_FABRIC_CRYPTO "$EXTRACTED_FIRM_DIR"
-    REMOVE_DEBLOAT_LIBS "$EXTRACTED_FIRM_DIR"
-    REMOVE_UNUSED_SERVICES "$EXTRACTED_FIRM_DIR"
+    DEBLOAT_APPS_AND_RESIDUALS "$d"
+    REMOVE_ESIM_FILES "$d"
+    REMOVE_FABRIC_CRYPTO "$d"
+    REMOVE_DEBLOAT_LIBS "$d"
+    REMOVE_UNUSED_SERVICES "$d"
 
     echo -e "- Deleting additional unnecessary files and folders."
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/app"/SamsungTTS*
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/init/boot-image.bprof"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/init/boot-image.prof"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/etc/mediasearch"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/hidden"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/preload"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/MediaSearch"
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app"/GameDriver-*
-    rm -rf "$EXTRACTED_FIRM_DIR/system/system/tts"
-    rm -rf "$EXTRACTED_FIRM_DIR/product/app/Gmail2/oat"
-    rm -rf "$EXTRACTED_FIRM_DIR/product/app/Maps/oat"
-    rm -rf "$EXTRACTED_FIRM_DIR/product/app/SpeechServicesByGoogle/oat"
-    rm -rf "$EXTRACTED_FIRM_DIR/product/app/YouTube/oat"
-    rm -rf "$EXTRACTED_FIRM_DIR/product/priv-app"/HotwordEnrollment*
+    REMOVE_PATH_IF_EXISTS "$d/system/system/app"/SamsungTTS* "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/init/boot-image.bprof" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/init/boot-image.prof" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/etc/mediasearch" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/hidden" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/preload" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app/MediaSearch" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/priv-app"/GameDriver-* "$d"
+    REMOVE_PATH_IF_EXISTS "$d/system/system/tts" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/product/app/Gmail2/oat" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/product/app/Maps/oat" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/product/app/SpeechServicesByGoogle/oat" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/product/app/YouTube/oat" "$d"
+    REMOVE_PATH_IF_EXISTS "$d/product/priv-app"/HotwordEnrollment* "$d"
+
+    echo -e "- Cleaning metadata for debloated files..."
+    local config_dir="$d/config"
+    for fc in "$config_dir"/*_file_contexts; do
+        [ -f "$fc" ] && sort -u "$fc" -o "$fc" 2>/dev/null
+    done
+    for fs in "$config_dir"/*_fs_config; do
+        [ -f "$fs" ] && sort -u "$fs" -o "$fs" 2>/dev/null
+    done
 
     echo -e "- Debloat complete"
 }
