@@ -50,6 +50,7 @@ APPLY_MODS() {
 
         echo "- Applying mod: $mod_name"
         cp -rfa "$mod/." "$EXTRACTED_FIRM_DIR/"
+        APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$mod"
     done
 
     if [ -d "$MODS_SRC/PhotoEditor_AIFull" ]; then
@@ -66,6 +67,7 @@ APPLY_MODS() {
         unzip -o "$EXTRACTED_FIRM_DIR/system/system/priv-app/PhotoEditor_AIFull.zip" \
             -d "$EXTRACTED_FIRM_DIR/system/system/priv-app/"
         rm -f "$EXTRACTED_FIRM_DIR/system/system/priv-app/PhotoEditor_AIFull.zip"
+        APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$MODS_SRC/PhotoEditor_AIFull"
     fi
 
     if [ "${STOCK_DEVICE_TYPE:-}" = "jdm" ]; then
@@ -73,6 +75,7 @@ APPLY_MODS() {
         rm -rf "$EXTRACTED_FIRM_DIR/system/system/priv-app/SamSungCamera"
         if [ -d "$MODS_SRC/JDM_Special/SamSungCamera" ]; then
             cp -rfa "$MODS_SRC/JDM_Special/SamSungCamera/." "$EXTRACTED_FIRM_DIR/"
+            APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$MODS_SRC/JDM_Special/SamSungCamera"
         fi
     fi
 
