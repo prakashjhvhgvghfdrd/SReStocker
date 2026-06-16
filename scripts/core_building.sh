@@ -508,14 +508,10 @@ APPEND_METADATA_FOR_PATH() {
 
     find "$ADDED_PATH" \( -type f -o -type d -o -type l \) 2>/dev/null | while IFS= read -r item; do
         local REL_PATH="${item#$EXTRACTED_FIRM_DIR/}"
+        REL_PATH="${REL_PATH#$PARTITION/}"
         [[ "$PARTITION" == "system" ]] && REL_PATH="${REL_PATH#system/}"
 
-        local ENTRY
-        if [[ "$PARTITION" == "system" ]]; then
-            ENTRY="$REL_PATH"
-        else
-            ENTRY="$PARTITION/$REL_PATH"
-        fi
+        local ENTRY="$REL_PATH"
 
         if ! grep -qF "$ENTRY " "$FS_CONFIG" 2>/dev/null; then
             if [ -d "$item" ]; then
@@ -525,8 +521,14 @@ APPEND_METADATA_FOR_PATH() {
             fi
         fi
 
-        if ! grep -qF "/$ENTRY " "$FILE_CONTEXTS" 2>/dev/null; then
-            echo "/$ENTRY u:object_r:system_file:s0" >> "$FILE_CONTEXTS"
+        local FC_ENTRY
+        if [[ "$PARTITION" == "system" ]]; then
+            FC_ENTRY="/$REL_PATH"
+        else
+            FC_ENTRY="/$PARTITION/$REL_PATH"
+        fi
+        if ! grep -qF "$FC_ENTRY " "$FILE_CONTEXTS" 2>/dev/null; then
+            echo "$FC_ENTRY u:object_r:system_file:s0" >> "$FILE_CONTEXTS"
         fi
     done
 
