@@ -2,16 +2,14 @@
 
 set -euo pipefail
 
-if [ "$#" -lt 4 ]; then
-    echo "Usage: $0 <STOCK_DEVICE> <TARGET_DEVICE> <OUTPUT_FILESYSTEM> <APPLY_MODS>"
-    echo "  APPLY_MODS: true or false"
+if [ "$#" -lt 3 ]; then
+    echo "Usage: $0 <STOCK_DEVICE> <TARGET_DEVICE> <OUTPUT_FILESYSTEM>"
     exit 1
 fi
 
 export STOCK_DEVICE="$1"
 export TARGET_DEVICE="$2"
 export OUTPUT_FILESYSTEM="$3"
-export APPLY_MODS="$4"
 
 VERSION="1"
 
@@ -33,7 +31,6 @@ source "$(pwd)/scripts/build_prop.sh"
 echo "Starting SReStocker Process..."
 echo "Stock Device Config: $STOCK_DEVICE"
 echo "Target Firmware Device: $TARGET_DEVICE"
-echo "Apply Mods: $APPLY_MODS"
 
 EXTRACT_FIRMWARE "$FIRM_DIR/$TARGET_DEVICE"
 EXTRACT_FIRMWARE_IMG "$FIRM_DIR/$TARGET_DEVICE"
@@ -46,11 +43,7 @@ DEBLOAT "$FIRM_DIR/$TARGET_DEVICE"
 FIX_SELINUX "$FIRM_DIR/$TARGET_DEVICE"
 APPLY_CUSTOM_FEATURES "$FIRM_DIR/$TARGET_DEVICE"
 
-if [ "$APPLY_MODS" = "true" ]; then
-    APPLY_MODS "$FIRM_DIR/$TARGET_DEVICE"
-else
-    echo "- Skipping mods (APPLY_MODS=false)"
-fi
+APPLY_MODS "$FIRM_DIR/$TARGET_DEVICE"
 
 APPLY_CUSTOM_FLOATING_FEATURES
 APPLY_CUSTOM_BUILD_PROPS "$FIRM_DIR/$TARGET_DEVICE"
