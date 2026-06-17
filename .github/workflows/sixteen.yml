@@ -67,6 +67,9 @@ jobs:
           fi
           unzip -q apps.zip -d SReStocker/Mods
           rm apps.zip
+          if [ -d "SReStocker/Mods/apps" ]; then
+            mv SReStocker/Mods/apps SReStocker/Mods/Apps
+          fi
           if [ ! -d "SReStocker/Mods/Apps" ]; then
             echo "ERROR: SReStocker/Mods/Apps directory not found after unzip."
             ls -la SReStocker/Mods/
