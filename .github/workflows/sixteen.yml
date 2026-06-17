@@ -60,7 +60,7 @@ jobs:
         run: |
           echo "Downloading external Apps..."
           mkdir -p SReStocker/Mods
-          curl -L -o apps.zip "https://github.com/Xiatsuma/SReStocker-Mods/releases/download/v2.0/Apps.zip"
+          curl -Lf -o apps.zip "https://github.com/Xiatsuma/SReStocker-Mods/releases/download/v3.0/apps.zip"
           if [ ! -f apps.zip ]; then
             echo "ERROR: Failed to download apps.zip"
             exit 1
