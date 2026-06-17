@@ -359,31 +359,29 @@ ADD_SYSTEM_EXT_IN_SYSTEM_ROOT() {
     echo -e "- Copying system_ext content into system root"
     rm -rf "$EXTRACTED_FIRM_DIR/system/system_ext"
     mv "$EXTRACTED_FIRM_DIR/system_ext" "$EXTRACTED_FIRM_DIR/system"
-
-    local SYSEXT_FC="$EXTRACTED_FIRM_DIR/config/system_ext_file_contexts"
-    local SYSEXT_FS="$EXTRACTED_FIRM_DIR/config/system_ext_fs_config"
-    local SYS_FC="$EXTRACTED_FIRM_DIR/config/system_file_contexts"
-    local SYS_FS="$EXTRACTED_FIRM_DIR/config/system_fs_config"
-
-    echo -e "- Merging system_ext metadata into system"
-
-    if [ -f "$SYSEXT_FC" ] && [ -s "$SYSEXT_FC" ]; then
-        sed "s|^/system_ext|/system/system_ext|g" "$SYSEXT_FC" | \
-            grep -v '^/system/system_ext u:object_r:system_file:s0$' | \
-            grep -v '^/system/system_ext(/\.\*)? u:object_r:system_file:s0$' >> "$SYS_FC"
-    fi
-    if [ -f "$SYSEXT_FS" ] && [ -s "$SYSEXT_FS" ]; then
-        sed "s|^system_ext|system/system_ext|g" "$SYSEXT_FS" | \
-            grep -v '^system/system_ext 0 0 0755 capabilities=0x0$' >> "$SYS_FS"
-    fi
-
-    echo "system/system_ext 0 0 0755 capabilities=0x0" >> "$SYS_FS"
-    echo "/system/system_ext u:object_r:system_file:s0" >> "$SYS_FC"
-
-    sort -u "$SYS_FC" -o "$SYS_FC"
-    sort -u "$SYS_FS" -o "$SYS_FS"
-    rm -f "$SYSEXT_FC" "$SYSEXT_FS"
-
+    echo -e "- Cleaning and merging system_ext file contexts and configs"
+    SYSTEM_EXT_CONFIG_FILE="$EXTRACTED_FIRM_DIR/config/system_ext_fs_config"
+    SYSTEM_EXT_CONTEXTS_FILE="$EXTRACTED_FIRM_DIR/config/system_ext_file_contexts"
+    SYSTEM_CONFIG_FILE="$EXTRACTED_FIRM_DIR/config/system_fs_config"
+    SYSTEM_CONTEXTS_FILE="$EXTRACTED_FIRM_DIR/config/system_file_contexts"
+    SYSTEM_EXT_TEMP_CONFIG="${SYSTEM_EXT_CONFIG_FILE}.tmp"
+    SYSTEM_EXT_TEMP_CONTEXTS="${SYSTEM_EXT_CONTEXTS_FILE}.tmp"
+    grep -v '^/ u:object_r:system_file:s0$' "$SYSTEM_EXT_CONTEXTS_FILE" \
+    | grep -v '^/system_ext u:object_r:system_file:s0$' \
+    | grep -v '^/system_ext(.*)? u:object_r:system_file:s0$' \
+    | grep -v '^/system_ext/ u:object_r:system_file:s0$' \
+    > "$SYSTEM_EXT_TEMP_CONTEXTS" && mv "$SYSTEM_EXT_TEMP_CONTEXTS" "$SYSTEM_EXT_CONTEXTS_FILE"
+    grep -v '^/ 0 0 0755$' "$SYSTEM_EXT_CONFIG_FILE" \
+    | grep -v '^system_ext/ 0 0 0755$' \
+    | grep -v '^system_ext/lost+found 0 0 0755$' \
+    > "$SYSTEM_EXT_TEMP_CONFIG" && mv "$SYSTEM_EXT_TEMP_CONFIG" "$SYSTEM_EXT_CONFIG_FILE"
+    awk '{print "system/" $0}' "$SYSTEM_EXT_CONFIG_FILE" \
+    > "$SYSTEM_EXT_TEMP_CONFIG" && mv "$SYSTEM_EXT_TEMP_CONFIG" "$SYSTEM_EXT_CONFIG_FILE"
+    awk '{print "/system" $0}' "$SYSTEM_EXT_CONTEXTS_FILE" \
+    > "$SYSTEM_EXT_TEMP_CONTEXTS" && mv "$SYSTEM_EXT_TEMP_CONTEXTS" "$SYSTEM_EXT_CONTEXTS_FILE"
+    cat "$SYSTEM_EXT_CONFIG_FILE" >> "$SYSTEM_CONFIG_FILE"
+    cat "$SYSTEM_EXT_CONTEXTS_FILE" >> "$SYSTEM_CONTEXTS_FILE"
+    rm -rf "$EXTRACTED_FIRM_DIR"/config/system_ext*
     export TARGET_ROM_SYSTEM_EXT_DIR="$EXTRACTED_FIRM_DIR/system/system_ext"
 }
 
@@ -394,40 +392,35 @@ SEPARATE_SYSTEM_EXT() {
     fi
     local EXTRACTED_FIRM_DIR="$1"
     echo "- Separating system_ext"
-
     mv "$EXTRACTED_FIRM_DIR/system/system/system_ext" "$EXTRACTED_FIRM_DIR/"
     ln -s /system_ext "$EXTRACTED_FIRM_DIR/system/system/system_ext"
     rm -rf "$EXTRACTED_FIRM_DIR/system/system/system_ext"
     mkdir -p "$EXTRACTED_FIRM_DIR/system/system_ext"
-
-    local SYS_FC="$EXTRACTED_FIRM_DIR/config/system_file_contexts"
-    local SYS_FS="$EXTRACTED_FIRM_DIR/config/system_fs_config"
-    local SYSEXT_FC="$EXTRACTED_FIRM_DIR/config/system_ext_file_contexts"
-    local SYSEXT_FS="$EXTRACTED_FIRM_DIR/config/system_ext_fs_config"
-
-    echo "- Extracting system_ext metadata from system configs"
-
-    if [ -f "$SYS_FC" ] && grep -q '/system/system/system_ext' "$SYS_FC"; then
-        grep '/system/system/system_ext' "$SYS_FC" | \
-            sed 's|^/system/system/system_ext|/system_ext|g' > "$SYSEXT_FC"
-        sed -i '\|/system/system/system_ext|d' "$SYS_FC"
-        echo '/system/system_ext u:object_r:system_file:s0' >> "$SYS_FC"
-        echo '/ u:object_r:system_file:s0' >> "$SYSEXT_FC"
-        sort -u "$SYSEXT_FC" -o "$SYSEXT_FC"
-        sort -u "$SYS_FC" -o "$SYS_FC"
+    SYSTEM_FS_CONFIG="$EXTRACTED_FIRM_DIR/config/system_fs_config"
+    SYSTEM_FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/system_file_contexts"
+    SYSTEM_EXT_FS_CONFIG="$EXTRACTED_FIRM_DIR/config/system_ext_fs_config"
+    SYSTEM_EXT_FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/system_ext_file_contexts"
+    if grep -q '^/system/system/system_ext' "$SYSTEM_FILE_CONTEXTS"; then
+        grep '^/system/system/system_ext' "$SYSTEM_FILE_CONTEXTS" > "$SYSTEM_EXT_FILE_CONTEXTS"
+        sed -i '\|^/system/system/system_ext|d' "$SYSTEM_FILE_CONTEXTS"
+        awk '{sub(/^\/system\/system\/system_ext/, "/system_ext"); print}' "$SYSTEM_EXT_FILE_CONTEXTS" > "$SYSTEM_EXT_FILE_CONTEXTS.tmp" && \
+        mv "$SYSTEM_EXT_FILE_CONTEXTS.tmp" "$SYSTEM_EXT_FILE_CONTEXTS"
+        grep -qxF '/system/system_ext u:object_r:system_file:s0' "$SYSTEM_FILE_CONTEXTS" || echo '/system/system_ext u:object_r:system_file:s0' >> "$SYSTEM_FILE_CONTEXTS"
+        grep -qxF '/system/system/system_ext u:object_r:system_file:s0' "$SYSTEM_EXT_FILE_CONTEXTS" || echo '/system/system/system_ext u:object_r:system_file:s0' >> "$SYSTEM_EXT_FILE_CONTEXTS"
+        grep -qxF '/ u:object_r:system_file:s0' "$SYSTEM_EXT_FILE_CONTEXTS" || echo '/ u:object_r:system_file:s0' >> "$SYSTEM_EXT_FILE_CONTEXTS"
+        sort -u "$SYSTEM_EXT_FILE_CONTEXTS" -o "$SYSTEM_EXT_FILE_CONTEXTS"
     fi
-
-    if [ -f "$SYS_FS" ] && grep -q 'system/system/system_ext' "$SYS_FS"; then
-        grep 'system/system/system_ext' "$SYS_FS" | \
-            sed 's|^system/system/system_ext|system_ext|g' > "$SYSEXT_FS"
-        sed -i '\|system/system/system_ext|d' "$SYS_FS"
-        echo 'system/system_ext 0 0 0755 capabilities=0x0' >> "$SYS_FS"
-        echo '/ 0 0 0755 capabilities=0x0' >> "$SYSEXT_FS"
-        echo 'system_ext/ 0 0 0755 capabilities=0x0' >> "$SYSEXT_FS"
-        sort -u "$SYSEXT_FS" -o "$SYSEXT_FS"
-        sort -u "$SYS_FS" -o "$SYS_FS"
+    if grep -q '^system/system/system_ext' "$SYSTEM_FS_CONFIG"; then
+        grep '^system/system/system_ext' "$SYSTEM_FS_CONFIG" > "$SYSTEM_EXT_FS_CONFIG"
+        sed -i '\|^system/system/system_ext|d' "$SYSTEM_FS_CONFIG"
+        awk '{sub(/^system\/system\/system_ext/, "system_ext"); print}' "$SYSTEM_EXT_FS_CONFIG" > "$SYSTEM_EXT_FS_CONFIG.tmp" && \
+        mv "$SYSTEM_EXT_FS_CONFIG.tmp" "$SYSTEM_EXT_FS_CONFIG"
+        grep -qxF 'system/system_ext 0 0 0755' "$SYSTEM_FS_CONFIG" || echo 'system/system_ext 0 0 0755' >> "$SYSTEM_FS_CONFIG"
+        grep -qxF 'system/system/system_ext 0 0 0644' "$SYSTEM_FS_CONFIG" || echo 'system/system/system_ext 0 0 0644' >> "$SYSTEM_FS_CONFIG"
+        grep -qxF '/ 0 0 0755' "$SYSTEM_EXT_FS_CONFIG" || echo '/ 0 0 0755' >> "$SYSTEM_EXT_FS_CONFIG"
+        grep -qxF 'system_ext/ 0 0 0755' "$SYSTEM_EXT_FS_CONFIG" || echo 'system_ext/ 0 0 0755' >> "$SYSTEM_EXT_FS_CONFIG"
+        sort -u "$SYSTEM_EXT_FS_CONFIG" -o "$SYSTEM_EXT_FS_CONFIG"
     fi
-
     export TARGET_ROM_SYSTEM_EXT_DIR="$EXTRACTED_FIRM_DIR/system_ext"
 }
 
@@ -480,64 +473,6 @@ UPDATE_FLOATING_FEATURE() {
     fi
 }
 
-APPEND_METADATA_FOR_PATH() {
-    local EXTRACTED_FIRM_DIR="$1"
-    local ADDED_PATH="$2"
-
-    [ ! -e "$ADDED_PATH" ] && return 0
-
-    local PARTITION
-    if [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/system"* ]]; then
-        PARTITION="system"
-    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/product"* ]]; then
-        PARTITION="product"
-    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/system_ext"* ]]; then
-        PARTITION="system_ext"
-    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/vendor"* ]]; then
-        PARTITION="vendor"
-    elif [[ "$ADDED_PATH" == "$EXTRACTED_FIRM_DIR/odm"* ]]; then
-        PARTITION="odm"
-    else
-        return 0
-    fi
-
-    local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
-    local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
-
-    echo -e "  📋 Appending metadata for new files in $(basename "$ADDED_PATH")"
-
-    find "$ADDED_PATH" \( -type f -o -type d -o -type l \) 2>/dev/null | while IFS= read -r item; do
-        local REL_PATH="${item#$EXTRACTED_FIRM_DIR/}"
-        REL_PATH="${REL_PATH#$PARTITION/}"
-        [[ "$PARTITION" == "system" ]] && REL_PATH="${REL_PATH#system/}"
-
-        local ENTRY="$REL_PATH"
-
-        if ! grep -qF "$ENTRY " "$FS_CONFIG" 2>/dev/null; then
-            if [ -d "$item" ]; then
-                echo "$ENTRY 0 0 755 capabilities=0x0" >> "$FS_CONFIG"
-            else
-                echo "$ENTRY 0 0 0644 capabilities=0x0" >> "$FS_CONFIG"
-            fi
-        fi
-
-        local FC_ENTRY
-        if [[ "$PARTITION" == "system" ]]; then
-            FC_ENTRY="/$REL_PATH"
-        else
-            FC_ENTRY="/$PARTITION/$REL_PATH"
-        fi
-        if ! grep -qF "$FC_ENTRY " "$FILE_CONTEXTS" 2>/dev/null; then
-            echo "$FC_ENTRY u:object_r:system_file:s0" >> "$FILE_CONTEXTS"
-        fi
-    done
-
-    sort -u "$FS_CONFIG" -o "$FS_CONFIG" 2>/dev/null
-    sort -u "$FILE_CONTEXTS" -o "$FILE_CONTEXTS" 2>/dev/null
-
-    echo -e "  ✅ Metadata appended for $PARTITION"
-}
-
 APPLY_STOCK_CONFIG() {
     echo -e ""
     if [ -z "$STOCK_DEVICE" ] || [ "$STOCK_DEVICE" = "None" ]; then
@@ -578,9 +513,6 @@ APPLY_STOCK_CONFIG() {
     if [ -d "$DEVICES_DIR/$STOCK_DEVICE/extra" ]; then
         cp -af "$DEVICES_DIR/$STOCK_DEVICE/extra/." "$(pwd)/OUT"
     fi
-
-    APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$EXTRACTED_FIRM_DIR/system/system"
-    APPEND_METADATA_FOR_PATH "$EXTRACTED_FIRM_DIR" "$EXTRACTED_FIRM_DIR/product/overlay"
 }
 
 BUILD_PROP() {
@@ -674,13 +606,9 @@ GEN_FS_CONFIG() {
         PARTITION="$(basename "$ROOT")"
         [ "$PARTITION" = "config" ] && continue
         local FS_CONFIG="$EXTRACTED_FIRM_DIR/config/${PARTITION}_fs_config"
-        if [ -s "$FS_CONFIG" ]; then
-            echo -e "  ✅ $PARTITION fs_config already exists, skipping generation"
-            continue
-        fi
         local TMP_EXISTING="$(mktemp)"
         touch "$FS_CONFIG"
-        echo -e "${YELLOW}Generating fs_config:${NC} $PARTITION (fallback)"
+        echo -e "${YELLOW}Generating fs_config:${NC} $PARTITION"
         awk '{print $1}' "$FS_CONFIG" | sort -u > "$TMP_EXISTING"
         find "$ROOT" -mindepth 1 \( -type f -o -type d -o -type l \) | while IFS= read -r item; do
             REL_PATH="${item#$ROOT/}"
@@ -697,7 +625,7 @@ GEN_FS_CONFIG() {
             fi
         done
         rm -f "$TMP_EXISTING"
-        echo -e "  ✅ $PARTITION fs_config generated (fallback)"
+        echo -e "  ✅ $PARTITION fs_config generated"
     done
 }
 
@@ -730,12 +658,8 @@ GEN_FILE_CONTEXTS() {
         PARTITION="$(basename "$ROOT")"
         [ "$PARTITION" = "config" ] && continue
         local FILE_CONTEXTS="$EXTRACTED_FIRM_DIR/config/${PARTITION}_file_contexts"
-        if [ -s "$FILE_CONTEXTS" ]; then
-            echo -e "  ✅ $PARTITION file_contexts already exists, skipping generation"
-            continue
-        fi
         touch "$FILE_CONTEXTS"
-        echo -e "${YELLOW}Generating file_contexts:${NC} $PARTITION (fallback)"
+        echo -e "${YELLOW}Generating file_contexts:${NC} $PARTITION"
         declare -A EXISTING=()
         while IFS= read -r line || [[ -n "$line" ]]; do
             [ -z "$line" ] && continue
@@ -765,7 +689,7 @@ GEN_FILE_CONTEXTS() {
                 EXISTING["$ESCAPED_PATH"]=1
             fi
         done < <(find "$ROOT" -mindepth 1 \( -type f -o -type d -o -type l \))
-        echo -e "  ✅ $PARTITION file_contexts generated (fallback)"
+        echo -e "  ✅ $PARTITION file_contexts generated"
         unset EXISTING
     done
 }
