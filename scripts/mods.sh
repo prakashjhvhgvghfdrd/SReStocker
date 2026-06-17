@@ -17,23 +17,20 @@ APPLY_MODS() {
         return 0
     fi
 
-    for mod in "$MODS_SRC"/*; do
-        [ -d "$mod" ] || continue
-        local mod_name="$(basename "$mod")"
-        echo "- Applying mod: $mod_name"
+    if [ -d "$MODS_SRC/system" ]; then
+        echo "- Applying mod: system"
+        cp -rfa "$MODS_SRC/system/." "$EXTRACTED_FIRM_DIR/system/system/"
+    fi
 
-        if [ -d "$mod/system" ]; then
-            cp -rfa "$mod/system/." "$EXTRACTED_FIRM_DIR/system/system/"
-        fi
+    if [ -d "$MODS_SRC/product" ]; then
+        echo "- Applying mod: product"
+        cp -rfa "$MODS_SRC/product/." "$EXTRACTED_FIRM_DIR/product/"
+    fi
 
-        if [ -d "$mod/product" ]; then
-            cp -rfa "$mod/product/." "$EXTRACTED_FIRM_DIR/product/"
-        fi
-
-        if [ -d "$mod/system_ext" ]; then
-            cp -rfa "$mod/system_ext/." "$EXTRACTED_FIRM_DIR/system_ext/"
-        fi
-    done
+    if [ -d "$MODS_SRC/system_ext" ]; then
+        echo "- Applying mod: system_ext"
+        cp -rfa "$MODS_SRC/system_ext/." "$EXTRACTED_FIRM_DIR/system_ext/"
+    fi
 
     echo "- All mods applied."
 }
