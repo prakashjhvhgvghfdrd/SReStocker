@@ -23,26 +23,6 @@ chmod +x $(pwd)/bin/erofs-utils/mkfs.erofs
 
 export TARGET_ROM_FLOATING_FEATURE="$FIRM_DIR/$TARGET_DEVICE/system/system/etc/floating_feature.xml"
 
-CHECK_FILE() {
-    if [ ! -f "$1" ]; then
-        echo -e "[!] File not found: $1"
-        echo -e "- Skipping..."
-        return 1
-    fi
-    return 0
-}
-
-REMOVE_LINE() {
-    if [ "$#" -ne 2 ]; then
-        echo -e "Usage: ${FUNCNAME[0]} <TARGET_LINE> <TARGET_FILE>"
-        return 1
-    fi
-    local LINE="$1"
-    local FILE="$2"
-    echo -e "- Deleting $LINE from $FILE"
-    grep -vxF "$LINE" "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
-}
-
 GET_PROP() {
     if [ "$#" -ne 3 ]; then
         echo -e "Usage: ${FUNCNAME[0]} <EXTRACTED_FIRM_DIR> <PARTITION> <PROP>"
@@ -473,6 +453,32 @@ UPDATE_FLOATING_FEATURE() {
     fi
 }
 
+APPLY_VNDK() {
+    local EXTRACTED_FIRM_DIR="$1"
+    
+    if [ -z "${STOCK_VNDK_VERSION:-}" ]; then
+        echo "- No STOCK_VNDK_VERSION set, skipping VNDK"
+        return 0
+    fi
+    
+    local DONOR_VNDK="36.0"
+    local VNDK_SRC="$VNDKS_COLLECTION/$DONOR_VNDK/$STOCK_VNDK_VERSION/system_ext"
+    
+    if [ ! -d "$VNDK_SRC" ]; then
+        DONOR_VNDK="36.1"
+        VNDK_SRC="$VNDKS_COLLECTION/$DONOR_VNDK/$STOCK_VNDK_VERSION/system_ext"
+    fi
+    
+    if [ ! -d "$VNDK_SRC" ]; then
+        echo "- VNDK folder not found for donor $DONOR_VNDK, version $STOCK_VNDK_VERSION, skipping"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}Applying VNDK version $STOCK_VNDK_VERSION from donor $DONOR_VNDK${NC}"
+    cp -rfa "$VNDK_SRC/." "$EXTRACTED_FIRM_DIR/system_ext/"
+    echo "- VNDK applied"
+}
+
 APPLY_STOCK_CONFIG() {
     echo -e ""
     if [ -z "$STOCK_DEVICE" ] || [ "$STOCK_DEVICE" = "None" ]; then
@@ -492,10 +498,8 @@ APPLY_STOCK_CONFIG() {
     echo -e "- $STOCK_DEVICE config found."
     export STOCK_VNDK_VERSION="$(grep -m1 '^STOCK_VNDK_VERSION=' "$DEVICES_DIR/$STOCK_DEVICE/config" | cut -d= -f2 | tr -d '\r')"
     export STOCK_HAS_SEPARATE_SYSTEM_EXT="$(grep -m1 '^STOCK_HAS_SEPARATE_SYSTEM_EXT=' "$DEVICES_DIR/$STOCK_DEVICE/config" | cut -d= -f2 | tr -d '\r')"
-    export STOCK_DVFS_FILENAME="$(grep -m1 '^STOCK_DVFS_FILENAME=' "$DEVICES_DIR/$STOCK_DEVICE/config" | cut -d= -f2 | tr -d '\r')"
     echo "- Stock device vndk version: $STOCK_VNDK_VERSION"
     export STOCK_ROM_FLOATING_FEATURE="$DEVICES_DIR/$STOCK_DEVICE/floating_feature.xml"
-    export STOCK_SIOP_POLICY_FILENAME="$(awk -F'[<>]' '$2 == "SEC_FLOATING_FEATURE_SYSTEM_CONFIG_SIOP_POLICY_FILENAME" {print $3}' "$STOCK_ROM_FLOATING_FEATURE" | tr -d '\r' | xargs)"
     export STOCK_DEVICE_TYPE="$(awk -F'[<>]' '$2 == "SEC_FLOATING_FEATURE_COMMON_CONFIG_DEVICE_MANUFACTURING_TYPE" {print $3}' "$STOCK_ROM_FLOATING_FEATURE" | tr -d '\r' | xargs)"
     echo "- Stock device type: ${STOCK_DEVICE_TYPE:-unknown}"
 
