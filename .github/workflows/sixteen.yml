@@ -14,7 +14,7 @@ on:
           - SM-A346M
         default: "SM-A346E"
       TARGET_DEVICE:
-        description: "TARGET_DEVICE (any name, e.g. SM-S711B, TestPort)"
+        description: "TARGET_DEVICE (Or any name)"
         required: true
         type: string
         default: "SM-A346E"
