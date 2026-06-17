@@ -14,14 +14,9 @@ on:
           - SM-A346M
         default: "SM-A346E"
       TARGET_DEVICE:
-        description: "TARGET_DEVICE model"
+        description: "TARGET_DEVICE (any name, e.g. SM-S711B, TestPort)"
         required: true
-        type: choice
-        options:
-          - SM-A346E
-          - SM-A346N
-          - SM-A3460
-          - SM-A346M
+        type: string
         default: "SM-A346E"
       SAMFW_URL:
         description: "Direct SamFW download URL (.zip)"
