@@ -13,31 +13,26 @@ APPLY_MODS() {
 
     local MODS_SRC="$(pwd)/SReStocker/Mods/Apps"
     if [ ! -d "$MODS_SRC" ]; then
-        echo "- Mods/Apps folder not found, skipping. (Download may have been skipped)"
+        echo "- Mods/Apps folder not found, skipping."
         return 0
     fi
-
-    local SYS_FOLDERS=("app" "priv-app" "etc" "lib" "lib64" "framework" "media" "overlay" "fonts" "usr")
-    local PART_FOLDERS=("product" "system_ext")
 
     for mod in "$MODS_SRC"/*; do
         [ -d "$mod" ] || continue
         local mod_name="$(basename "$mod")"
         echo "- Applying mod: $mod_name"
 
-        for folder in "${SYS_FOLDERS[@]}"; do
-            if [ -d "$mod/$folder" ]; then
-                mkdir -p "$EXTRACTED_FIRM_DIR/system/system/$folder"
-                cp -rfa "$mod/$folder/." "$EXTRACTED_FIRM_DIR/system/system/$folder/"
-            fi
-        done
+        if [ -d "$mod/system" ]; then
+            cp -rfa "$mod/system/." "$EXTRACTED_FIRM_DIR/system/system/"
+        fi
 
-        for folder in "${PART_FOLDERS[@]}"; do
-            if [ -d "$mod/$folder" ]; then
-                mkdir -p "$EXTRACTED_FIRM_DIR/$folder"
-                cp -rfa "$mod/$folder/." "$EXTRACTED_FIRM_DIR/$folder/"
-            fi
-        done
+        if [ -d "$mod/product" ]; then
+            cp -rfa "$mod/product/." "$EXTRACTED_FIRM_DIR/product/"
+        fi
+
+        if [ -d "$mod/system_ext" ]; then
+            cp -rfa "$mod/system_ext/." "$EXTRACTED_FIRM_DIR/system_ext/"
+        fi
     done
 
     echo "- All mods applied."
