@@ -8,16 +8,13 @@ on:
         required: true
         type: choice
         options:
-          - SM-A346E
-          - SM-A346N
-          - SM-A3460
-          - SM-A346M
-        default: "SM-A346E"
+          - SM-A135F
+        default: "SM-A135F"
       TARGET_DEVICE:
         description: "TARGET_DEVICE (Or any name)"
         required: true
         type: string
-        default: "SM-A346E"
+        default: "SM-S711B"
       SAMFW_URL:
         description: "Direct SamFW download URL (.zip)"
         required: true
